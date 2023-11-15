@@ -1,0 +1,13 @@
+﻿################################################################################
+# Este arquivo .gitignore foi criado automaticamente pelo Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/NarutoCharacters.API/.vs
+/NarutoCharacters.API/bin/Debug/net6.0
+/NarutoCharacters.API/obj
+/NarutoCharacters.API/Naruto.db-shm
+/NarutoCharacters.API/Naruto.db-wal
+/NarutoCharacters.API/NarutoCharacters.API.csproj
+/NarutoCharacters.API/NarutoCharacters.API.csproj.user
+/desktop.ini

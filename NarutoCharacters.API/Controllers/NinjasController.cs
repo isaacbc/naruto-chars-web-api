@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.Mvc;
 using NarutoCharacters.API.Models;
 using NarutoCharacters.API.Services;
 using System.Collections.Generic;
@@ -11,99 +12,70 @@ namespace NarutoCharacters.API.Controllers
     {
 
         private readonly INinjaRepository _ninjaRepository;
-        public NinjasController(INinjaRepository ninjaRepository)
+        private readonly IMapper _mapper;
+        public NinjasController(INinjaRepository ninjaRepository, IMapper mapper)
         {
             _ninjaRepository = ninjaRepository ?? throw new System.ArgumentNullException(nameof(ninjaRepository));
+            _mapper = mapper ?? throw new System.ArgumentNullException();
         }
         [HttpGet]
         public async Task<ActionResult<IEnumerable<NinjaWithoutJutsusDto>>> GetNinjas()
         {
             var ninjaEntities = await _ninjaRepository.GetNinjasAsync();
-            var results = new List<NinjaWithoutJutsusDto>();
-            foreach (var ninjaEntity in ninjaEntities)
-            {
-                results.Add(new NinjaWithoutJutsusDto()
-                {
-                    Id = ninjaEntity.Id,
-                    Name = ninjaEntity.Name,
-                    Description = ninjaEntity.Description
-                });
-            }
-            return Ok(results);
+            return Ok(_mapper.Map<IEnumerable<NinjaWithoutJutsusDto>>(ninjaEntities));
         }
 
         [HttpGet("{id}", Name = "GetNinja")]
-        public ActionResult<NinjaDto> GetNinja(int id)
+        public async Task<IActionResult> GetNinja(int id, bool includeJutsus = false)
         {
-            //var ninja = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == id);
-            //if(ninja == null)
-            //{
-            //    return NotFound();
-            //}
-
-            //return Ok(ninja);
-            return Ok();
+            var ninja = await _ninjaRepository.GetNinjaAsync(id, includeJutsus);
+            if (ninja == null)
+            {
+                return NotFound();
+            }
+            if (includeJutsus)
+            {
+                return Ok(_mapper.Map<NinjaDto>(ninja));
+            }
+            return Ok(_mapper.Map<NinjaWithoutJutsusDto>(ninja));
         }
 
         [HttpPost]
         public ActionResult<NinjaDto> CreateNinja(NinjaForCreationDto ninja)
         {
-
-            if (!ModelState.IsValid)
-            {
-                return BadRequest();
-            }
-            //create id for new ninja
-            var nextId = 1;
-            if (NinjasDataStore.Current.Ninjas.Count > 0)
-            {
-                nextId = NinjasDataStore.Current.Ninjas.Max(n => n.Id) + 1;
-            }
-
-            var newNinja = new NinjaDto()
-            {
-                Id = nextId,
-                Name = ninja.Name,
-                Description = ninja.Description
-            };
-
-            NinjasDataStore.Current.Ninjas.Add(newNinja);
-
-            return CreatedAtRoute("GetNinja", new { id = newNinja.Id }, newNinja);
-
+            var ninjaForCreation = _mapper.Map<Entities.Ninja>(ninja);
+            _ninjaRepository.AddNinja(ninjaForCreation);
+            _ninjaRepository.SaveChangesAsync();
+            _mapper.Map<NinjaWithoutJutsusDto>(ninjaForCreation);
+            return CreatedAtRoute("GetNinja", new { id = ninjaForCreation.Id }, ninjaForCreation);
         }
 
         [HttpPut("{ninjaId}")]
-        public ActionResult<NinjaDto> UpdateNinja(int ninjaId, NinjaForUpdateDto ninja)
+        public async Task<ActionResult<NinjaDto>> UpdateNinja(int ninjaId, NinjaForUpdateDto ninja)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest();
-            }
-
-            var ninjaFromStore = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if (ninjaFromStore == null)
+            var ninjaEntity = await _ninjaRepository.GetNinjaAsync(ninjaId, false);
+            if (ninja == null)
             {
                 return NotFound();
             }
+            _mapper.Map(ninja, ninjaEntity);
+            await _ninjaRepository.SaveChangesAsync();
 
-            ninjaFromStore.Name = ninja.Name ?? ninjaFromStore.Name;
-            ninjaFromStore.Description = ninja.Description ?? ninjaFromStore.Description;
-
-            return CreatedAtRoute("GetNinja", new { id = ninjaFromStore.Id }, ninjaFromStore);
+            var updateNinjaToReturn = _mapper.Map<Models.NinjaWithoutJutsusDto>(ninjaEntity);
+            return CreatedAtRoute("GetNinja", new { id = ninjaId }, ninjaEntity);
         }
 
+
         [HttpDelete("{ninjaId}")]
-        public ActionResult DeleteNinja(int ninjaId)
+        public async Task<ActionResult> DeleteNinja(int ninjaId)
         {
-            var ninjaFromStore = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if (ninjaFromStore == null)
+            var ninjaEntityForDel = await _ninjaRepository.GetNinjaAsync(ninjaId, true);
+            if (ninjaEntityForDel == null)
             {
                 return NotFound();
             }
-
-            NinjasDataStore.Current.Ninjas.Remove(ninjaFromStore);
-
+            _ninjaRepository.DeleteNinja(ninjaEntityForDel);
+            await _ninjaRepository.SaveChangesAsync();
             return NoContent();
         }
     }

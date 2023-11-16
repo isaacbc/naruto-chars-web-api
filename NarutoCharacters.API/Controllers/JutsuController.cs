@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using AutoMapper;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NarutoCharacters.API.Models;
+using NarutoCharacters.API.Services;
 
 namespace NarutoCharacters.API.Controllers
 {
@@ -8,109 +10,101 @@ namespace NarutoCharacters.API.Controllers
     [ApiController]
     public class JutsuController : ControllerBase
     {
-        [HttpGet]
-        public ActionResult<IEnumerable<JutsuDto>> GetJutsus(int ninjaId)
+        private readonly INinjaRepository _ninjaRepository;
+        private readonly IMapper _mapper;
+        public JutsuController(INinjaRepository ninjaRepository, IMapper mapper)
         {
-            var ninja = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if(ninja == null)
+            _ninjaRepository = ninjaRepository ??
+                throw new System.ArgumentNullException(nameof(ninjaRepository));
+            _mapper = mapper ??
+                throw new System.ArgumentNullException(nameof(mapper));
+
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<JutsuDto>>> GetJutsus(int ninjaId)
+        {
+            if (!await _ninjaRepository.NinjaExistsAsync(ninjaId))
             {
                 return NotFound();
             }
-            return Ok(ninja.Jutsus);
+            var jutsus = await _ninjaRepository.GetJutsusAsync(ninjaId);
+            return Ok(_mapper.Map<IEnumerable<JutsuDto>>(jutsus));
         }
 
         [HttpGet("{id}", Name = "GetJutsu")]
-        public ActionResult<JutsuDto> GetJutsu(int ninjaId, int id)
+        public async Task<ActionResult<JutsuDto>> GetJutsu(int ninjaId, int id)
         {
-            var ninja = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if(ninja== null)
+            if (!await _ninjaRepository.NinjaExistsAsync(ninjaId))
             {
                 return NotFound();
             }
 
-            //find jutsu
-            var jutsu = ninja.Jutsus.FirstOrDefault(j => j.Id == id);
-            if(jutsu == null)
+            var jutsu = await _ninjaRepository.GetJutsuAsync(ninjaId, id);
+            if (jutsu == null)
             {
                 return NotFound();
             }
-            return Ok(jutsu);
+            return Ok(_mapper.Map<JutsuDto>(jutsu));
         }
 
         [HttpPost]
-        public ActionResult<JutsuDto> CreateJutsu(int ninjaId, JutsuForCreationDto jutsu)
+        public async Task<ActionResult<JutsuDto>> CreateJutsu(int ninjaId, JutsuForCreationDto jutsu)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest();
-            }
-            var ninja = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if(ninja == null)
+            if (!await _ninjaRepository.NinjaExistsAsync(ninjaId) || jutsu == null)
             {
                 return NotFound();
             }
+            var jutsuFinal = _mapper.Map<Entities.Jutsu>(jutsu);
 
-            //create id for new jutsu
-            var nextId = 1;
-            if(ninja.Jutsus.Count > 0)
+            await _ninjaRepository.AddJutsuToNinjaAsync(ninjaId, jutsuFinal);
+            await _ninjaRepository.SaveChangesAsync();
+
+            var createdJutsuToReturn = _mapper.Map<Models.JutsuDto>(jutsuFinal);
+            return CreatedAtRoute("GetJutsu", new
             {
-                nextId = ninja.Jutsus.Max(j => j.Id) + 1;
-            }
+                ninjaId = ninjaId,
+                id = createdJutsuToReturn.Id,
 
-            var newJutsu = new JutsuDto()
-            {
-                Id = nextId,
-                Name = jutsu.Name,
-                Description = jutsu.Description
-            };
-
-            ninja.Jutsus.Add(newJutsu);
-
-            return CreatedAtRoute("GetJutsu", new { ninjaId= ninjaId, id= newJutsu.Id}, newJutsu );  
+            }, createdJutsuToReturn);
         }
 
         [HttpPut("{id}")]
-        public ActionResult<JutsuDto> UpdateJutsu(int ninjaId, int id, JutsuForUpdateDto jutsu)
+        public async Task<ActionResult<JutsuDto>> UpdateJutsu(int ninjaId, int id, JutsuForUpdateDto jutsu)
         {
-            if(!ModelState.IsValid)
-            {
-                return BadRequest();
-            }
-
-            var ninja = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if(ninja == null)
+            if (!await _ninjaRepository.NinjaExistsAsync(ninjaId))
             {
                 return NotFound();
             }
 
-            var jutsuFromStore = ninja.Jutsus.FirstOrDefault(j => j.Id == id);
-            if(jutsuFromStore == null)
+            var jutsuEntity = await _ninjaRepository.GetJutsuAsync(ninjaId, id);
+            if (jutsuEntity == null)
             {
                 return NotFound();
             }
 
-            jutsuFromStore.Name = jutsu.Name ?? jutsuFromStore.Name;
-            jutsuFromStore.Description = jutsu.Description ?? jutsuFromStore.Description;
+            _mapper.Map(jutsu, jutsuEntity);
+            await _ninjaRepository.SaveChangesAsync();
 
-            return CreatedAtRoute("GetJutsu", new { ninjaId = ninjaId, id = jutsuFromStore.Id }, jutsuFromStore);
+            var updatedJutsuToReturn = _mapper.Map<Models.JutsuDto>(jutsuEntity);
+            return CreatedAtRoute("GetJutsu", new { ninjaId = ninjaId, id = jutsuEntity.Id }, updatedJutsuToReturn);
         }
 
         [HttpDelete("{id}")]
-        public ActionResult DeleteJutsu(int ninjaId, int id)
+        public async Task<ActionResult> DeleteJutsu(int ninjaId, int id)
         {
-            var ninja = NinjasDataStore.Current.Ninjas.FirstOrDefault(n => n.Id == ninjaId);
-            if(ninja == null)
+            if(!await _ninjaRepository.NinjaExistsAsync(ninjaId))
+            {
+                return NotFound();
+            }
+            var jutsuForDel = await _ninjaRepository.GetJutsuAsync(ninjaId, id);
+            if (jutsuForDel == null)
             {
                 return NotFound();
             }
 
-            var jutsuFromStore = ninja.Jutsus.FirstOrDefault(j => j.Id == id);
-            if(jutsuFromStore == null)
-            {
-                return NotFound();
-            }
-
-            ninja.Jutsus.Remove(jutsuFromStore);
+            _ninjaRepository.DeleteJutsu(jutsuForDel);
+            await _ninjaRepository.SaveChangesAsync();
 
             return NoContent();
         }

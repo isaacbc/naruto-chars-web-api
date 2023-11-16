@@ -13,7 +13,7 @@ namespace NarutoCharacters.API.Entities
         [MaxLength(50)]
         public string Name { get; set; }
         [MaxLength(200)]
-        public string Description { get; set; }
+        public string? Description { get; set; }
         public ICollection<Jutsu> Jutsus { get; set; } = new List<Jutsu>();
 
         public Ninja(string name)
